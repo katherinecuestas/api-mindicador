@@ -57,6 +57,18 @@ resource "aws_apigatewayv2_route" "datos" {
   target = "integrations/${aws_apigatewayv2_integration.backend.id}"
   # ↑ le dice a la ruta a qué integración enviar la petición.
   #   ${...} es interpolación: inserta el id de la integración del bloque anterior dentro del texto.
+
+  # A partir de aquí la ruta exige un JWT válido antes de dejar pasar la petición.
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+# Sexta ruta: misma integración, pero SIN authorizer. Ruta abierta,
+# sirve para comparar contra /datos en la demo.
+resource "aws_apigatewayv2_route" "publico_datos" {
+  api_id    = aws_apigatewayv2_api.api_manager.id
+  route_key = "GET /publico/datos"
+  target    = "integrations/${aws_apigatewayv2_integration.backend.id}"
 }
 
 # Cuarto recurso: el "stage", el ambiente publicado que hace que la API responda de verdad
@@ -70,4 +82,19 @@ resource "aws_apigatewayv2_stage" "default" {
 output "url_datos" {
   value = "${aws_apigatewayv2_stage.default.invoke_url}/datos"
   # ↑ arma la URL final juntando la URL base del stage + "/datos"
+}
+
+# Quinto recurso: el AUTHORIZER, valida el token JWT antes de dejar pasar
+# a la ruta. Se conecta con tu User Pool de Cognito.
+resource "aws_apigatewayv2_authorizer" "cognito" {
+  api_id           = aws_apigatewayv2_api.api_manager.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+
+  name = "cognito-jwt-authorizer"
+
+  jwt_configuration {
+    audience = [aws_cognito_user_pool_client.spa.id]
+    issuer   = "https://cognito-idp.us-east-1.amazonaws.com/${aws_cognito_user_pool.pool.id}"
+  }
 }
